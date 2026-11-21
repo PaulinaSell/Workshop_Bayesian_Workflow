@@ -1,0 +1,53 @@
+---
+title: "Workshop on Bayesian Workflow"
+subtitle: "26-27 November 2026"
+format:
+  html:
+    toc: true
+    toc-location: left
+    tbl-cap-location: bottom
+    title-block-banner: false
+    number-sections: true
+    embed-resources: true
+    page-layout: full
+    theme:
+        - yeti
+        - styles/custom.scss
+---
+
+```{r}
+#| label: load_packages
+#| warning: false
+#| error: false 
+
+library(rethinking)
+
+set.seed(146)
+```
+
+# Simulation and priors
+## Simulate study population
+
+The first exercise is to simulate dataset that contains data on chronic kidney disease (CKD) and systolic blood pressure (BP).
+We will keep this super simple and start by simulating people with and without CKD.
+
+```{r}
+#| label: sim_CKD
+
+n <- 1000
+CKD_prevalence <- 0.15
+
+CKD <- rbern(n, 0.2) + 1
+table(CKD)
+```
+
+Here, we just sample from a Bernoulli distribution n = `r n` times and assume a CKD prevalence of `r CKD_prevalence * 100`%.
+
+Now we add a blood pressure value for each person in the sample.
+CKD can increase the blood pressure, so we'll simulate higher BP values for them.
+
+# Parameter estimation 
+
+# Model validation
+
+# Postprocessing 
