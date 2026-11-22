@@ -7,47 +7,163 @@ format:
     toc-location: left
     tbl-cap-location: bottom
     title-block-banner: false
-    number-sections: true
+    number-sections: false
     embed-resources: true
-    page-layout: full
+    # page-layout: full
     theme:
         - yeti
         - styles/custom.scss
+project:
+  pre-render: typst compile figures/dag.typ figures/dag.svg
 ---
+
+# Simulation and priors (day 1, morning)
+
+The first exercise is to simulate a dataset.
+
+## Simulating data
+
+We'll simulate data on air pollution (AP), chronic kidney disease (CKD), age, and systolic blood pressure (BP).
+Remember that we don't need to make it super realistic, but if the variables and their relationships  kinda make sense, it's easier to think about.
+
+![Graph with the relationships between variables](figures/dag.svg){#fig-dag fig-align="left" width="50%"}
+
+In our dataset, AP exposure increases BP and having CKD makes this effect stronger. 
+With older age, the risk to develop CKD increases, and so does BP.
+
+Let's first set up the workspace. 
 
 ```{r}
 #| label: load_packages
-#| warning: false
-#| error: false 
+#| include: false
 
 library(rethinking)
-
 set.seed(146)
 ```
 
-# Simulation and priors
-## Simulate study population
+### Air pollution
 
-The first exercise is to simulate dataset that contains data on chronic kidney disease (CKD) and systolic blood pressure (BP).
-We will keep this super simple and start by simulating people with and without CKD.
+We start by simulating the independent variables, which are AP and age in this case.
+We could imagine different air pollutants here, but we'll go with a common one: PM~2.5~.
+We set the concentration that the simulated values will fall around with `mean_PM`.
+We also add noise around that value with `rnorm` and exponentiate the whole thing so that all simulated AP values are positive. 
 
+```{r}
+#| label: sim_AP
+
+n <- 1000 # simulating 1000 individuals
+mean_PM <- 10
+AP <- exp(log(mean_PM) + rnorm(n, 0, 0.3))
+summary(AP)
+```
+
+### Age
+
+Simulating age is very straightforward.
+We use the uniform distribution so that the whole range between 55 and 95 years is covered nicely.
+
+```{r}
+#| label: sim_age
+
+age <- round(runif(n, 55, 95))
+summary(age)
+```
+
+
+### Chronic kidney disease
+
+CKD is a dependent variable, with age increasing the risk.
+
+![](figures/dag.svg){#fig-dag fig-align="left" width="50%"}
+
+This is why we first set the "beta" for age and CKD, so how much the risk to develop CKD increases with each year.
+
+```{r}
+#| label: beta_age_CKD
+
+b_age_CKD <- 0.4
+```
+
+I set it to `b_age_CKD` here, which is definitely not evidence-based :') 
+
+CKD status is binary, so we need to assign yes / no to everybody.
+But this assignment should be based on age. 
+Sooo... ?? 
+
+We first assign a *probability* to have CKD to everybody.
+We center the age variable by subtracting the mean from everybody's age, then we multiply by the "beta" from above.
+`inv_logit` bounds everything between 0 and 1 (which we need here, because we want *probabilities*) and the -2 means "not very likely" in log-space.
+So the "baseline risk" to have CKD is low.
+(Btw, we set -2 by just trying different values and looking at the results. No magic here.)
+
+```{r}
+#| label: prob_CKD
+
+prob_CKD <- inv_logit(-2 + ((age - mean(age)) * b_age_CKD))
+prob_CKD[1:5]
+```
+
+The next step is more straightforward again, we just sample from a Bernoulli distribution.
 ```{r}
 #| label: sim_CKD
 
-n <- 1000
-CKD_prevalence <- 0.15
-
-CKD <- rbern(n, 0.2) + 1
+CKD <- rbern(n, prob_CKD) + 1
 table(CKD)
 ```
 
-Here, we just sample from a Bernoulli distribution n = `r n` times and assume a CKD prevalence of `r CKD_prevalence * 100`%.
 
 Now we add a blood pressure value for each person in the sample.
-CKD can increase the blood pressure, so we'll simulate higher BP values for them.
+CKD can increase the blood pressure, so we'll simulate higher BP values for people with CKD.
 
-# Parameter estimation 
+```{r}
+#| label: sim_BP
 
-# Model validation
+intercept_CKD_BP <- c(110, 130)
+noise_BP <- 10
 
-# Postprocessing 
+BP <- round(
+  rnorm(
+    n,
+    mean = intercept_CKD_BP[CKD],
+    sd = noise_BP
+  ),
+  2
+)
+
+data <- data.frame(CKD, BP)
+```
+
+Above, we sample from a normal distribution with a little bit of noise around the mean BP values (`noise_BP` = `r noise_BP`). 
+We assume that people without CKD have an average systolic BP of 110 mmHg, while people with CKD have an average of 130.
+
+Let's plot the data.
+
+```{r}
+#| label: boxplot_CKD_BP
+#| code-fold: true
+#| fig-width: 9
+#| fig-height: 4
+
+library(tidyplots)
+
+data$CKD <- as.factor(data$CKD)
+
+data |>
+  tidyplot(x = CKD, y = BP, color = CKD) |>
+  add_mean_dash() |>
+  add_boxplot(linewidth = 0.4, dodge_width = 1) |>
+  adjust_y_axis_title("systolic blood pressure (mmHg)") |>
+  adjust_x_axis_title("chronic kidney disease status") |>
+  adjust_size(width = 90, height = 80) |>
+  adjust_font(fontsize = 10) |>
+  remove_legend()
+```
+
+As someone without a medical background, this looks solid to me. Great!
+
+
+# Parameter estimation (day 1, afternoon)
+
+# Model validation (day 2, morning)
+
+# Postprocessing (day 2, afternoon)
