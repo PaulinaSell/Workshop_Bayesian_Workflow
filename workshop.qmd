@@ -460,80 +460,111 @@ You can see a few examples of bad looking traceplots [here](https://arviz-devs.g
 Now let's visualize our results!
 
 ```{r}
-#| label: prep_vis_post_AP_BP
+#| label: prep_posterior_plot
+#| code-fold: true
+
+age_value <- 55 # we plot the line for one age (otherwise we'd need another dimension)
 
 post_samples <- extract.samples(m_AP_BP)
 
-Xseq <- seq(from = 1, to = 30, by = 0.5)
+APseq <- seq(from = 1, to = 30, by = 0.5)
 
 n_samples <- length(post_samples$a)
-n_x <- length(Xseq)
+n_x <- length(APseq)
 
-age_value <- mean(data$age)
-no_ckd_group <- 1
-ckd_group <- 2
+out_noCKD <- matrix(data = NA, nrow = n_samples, ncol = n_x)
 
-mu_matrix <- matrix(NA, nrow = n_samples, ncol = n_x)
-
-for (j in 1:n_x) {
-  x_value <- Xseq[j]
-
-  # one μ per posterior sample at this x value
-  mu_matrix[, j] <- post_samples$a +
-    post_samples$b_AP_BP[, ckd_group] * x_value +
-    post_samples$b_age_BP * age_value
+for (i in 1:n_samples) {
+  out_noCKD[i, ] <- post_samples$a[i] +
+    post_samples$b_AP_BP[i, 1] * APseq + # 1 for no CKD
+    post_samples$b_age_BP[i] * age_value
 }
 
-# now summarise each column (= each x value)
-mu_mean <- apply(mu_matrix, 2, mean)
-mu_q02 <- apply(mu_matrix, 2, quantile, probs = 0.02)
-mu_q25 <- apply(mu_matrix, 2, quantile, probs = 0.25)
-mu_q75 <- apply(mu_matrix, 2, quantile, probs = 0.75)
-mu_q98 <- apply(mu_matrix, 2, quantile, probs = 0.98)
-plot_df <- data.frame(Xseq, mu_mean, mu_q02, mu_q25, mu_q75, mu_q98)
+out_CKD <- matrix(data = NA, nrow = n_samples, ncol = n_x)
+
+for (i in 1:n_samples) {
+  out_CKD[i, ] <- post_samples$a[i] +
+    post_samples$b_AP_BP[i, 2] * APseq + # 1 for no CKD
+    post_samples$b_age_BP[i] * age_value
+}
+
+summarise_draws <- function(pred_matrix, x_values, prob = 0.95) {
+  n_x <- ncol(pred_matrix)
+
+  out_low <- vector(length = n_x)
+  out_q25 <- vector(length = n_x)
+  out_median <- vector(length = n_x)
+  out_q75 <- vector(length = n_x)
+  out_high <- vector(length = n_x)
+
+  for (j in 1:n_x) {
+    draws_j <- pred_matrix[, j] # all posterior draws for AP value j
+    interval_j <- HPDI(draws_j, prob = prob)
+
+    out_median[j] <- median(draws_j)
+    out_low[j] <- interval_j[1]
+    out_q25[j] <- quantile(draws_j, prob = 0.25)
+    out_q75[j] <- quantile(draws_j, prob = 0.75)
+    out_high[j] <- interval_j[2]
+  }
+
+  data.frame(
+    AP = x_values,
+    low = out_low,
+    q25 = out_q25,
+    median = out_median,
+    q75 = out_q75,
+    high = out_high
+  )
+}
+
+summary_noCKD <- summarise_draws(out_noCKD, APseq)
+summary_CKD <- summarise_draws(out_CKD, APseq)
 ```
 
 ```{r}
-#| label: vis_post_AP_BP
-#| fig-width: 9
-#| fig-height: 4
+#| label: posterior_plot
+#| code-fold: true
 
-library(tidyplots)
-library(ggplot2)
+plot(
+  NULL,
+  xlim = range(APseq),
+  ylim = range(c(summary_noCKD$low, summary_CKD$high)),
+  xlab = "Air pollution",
+  ylab = "Predicted BP (mmHg)"
+)
 
-plot_df |>
-  tidyplot(x = Xseq, y = mu_mean) |>
-  add(geom_ribbon(
-    aes(x = Xseq, ymin = mu_q02, ymax = mu_q98),
-    fill = "#eca7c9",
-    alpha = 0.4,
-    inherit.aes = FALSE
-  )) |>
-  add(geom_ribbon(
-    aes(x = Xseq, ymin = mu_q25, ymax = mu_q75),
-    fill = "#aa166f",
-    alpha = 0.4,
-    inherit.aes = FALSE
-  )) |>
-  add_line(color = "#45032c") |>
-  adjust_x_axis_title("Air pollution") |>
-  adjust_y_axis_title("Blood pressure (mmHg)") |>
-  adjust_size(width = 90, height = 80) |>
-  adjust_font(fontsize = 10)
-```
+shade(
+  rbind(summary_noCKD$low, summary_noCKD$high),
+  APseq,
+  col = col.alpha("cornflowerblue", 0.2)
+)
+shade(
+  rbind(summary_noCKD$q25, summary_noCKD$q75),
+  APseq,
+  col = col.alpha("cornflowerblue", 0.2)
+)
+lines(APseq, summary_noCKD$median, col = "cornflowerblue", lwd = 2)
 
-```{r}
-out <- vector(length = length(AP))
-matrix(data = Inf, nrow = 3, ncol = length(AP))
+shade(
+  rbind(summary_CKD$low, summary_CKD$high),
+  APseq,
+  col = col.alpha("#870052", 0.2)
+)
+shade(
+  rbind(summary_CKD$q25, summary_CKD$q75),
+  APseq,
+  col = col.alpha("#870052", 0.2)
+)
+lines(APseq, summary_CKD$median, col = "#870052", lwd = 2)
 
-for (i in 1:2) {
-  out[i, ] <- a[i] + b[i] * AP
-}
-
-out2 <- vector(length = length(AP))
-for (i in 1:ncol(out)) {
-  out2[i] <- median(out[, i])
-}
+legend(
+  "topleft",
+  legend = c("No CKD", "CKD"),
+  col = c("cornflowerblue", "#870052"),
+  lwd = 2,
+  bty = "n"
+)
 ```
 
 # Postprocessing
