@@ -19,25 +19,32 @@ execute:
   cache: true
 ---
 
+This notebook contains some of the material covered during the two-day *[Bayesian Workflow](https://avehtari.github.io/Bayesian-Workflow/)* workshop at Karolinska Institutet in late November 2026.
+It is intended for those who are relatively new to Bayesian statistics and the workflow.
+
+The workshop was organized by Simon Steiger, Frida Smids, Paulina Sell and Younes Laalou. \
+Find more events and information [on our website](https://learnbayes.se). 
+
 # Simulation and priors
 
-The first exercise is to simulate a dataset.
+The first exercise is to simulate a dataset that we can then use to build a statistical model.
 
 ## Simulating data
 
 We'll simulate data on air pollution (AP), chronic kidney disease (CKD), age, and systolic blood pressure (BP).
-Remember that we don't need to make it super realistic, but if the variables and their relationships  kinda make sense, it's easier to think about.
+The goal is not to make is super realistic, but if the variables and their relationships make a little bit of sense, it's easier to think about.
 
-![Graph with the relationships between variables](figures/dag.svg){#fig-dag fig-align="left" width="50%"}
+![Relationships between AP, CKD, age and BP](figures/dag.svg){#fig-dag fig-align="left" width="50%"}
 
-In our dataset, AP exposure increases BP and having CKD makes this effect stronger. 
+In our dataset, exposure to AP increases BP, while having CKD makes this effect stronger. 
 With older age, the risk to develop CKD increases, and so does BP.
 
 Let's first set up the workspace. 
 
 ```{r}
 #| label: load_packages
-#| include: false
+#| message: false
+#| error: false
 
 library(rethinking)
 set.seed(146)
@@ -45,9 +52,10 @@ set.seed(146)
 
 ### Air pollution
 
-We start by simulating the independent variables, which are AP and age in this case.
-We could imagine different air pollutants here, but we'll go with a common one: PM~2.5~.
-We set the concentration that the simulated values will fall around with `mean_PM`.
+We start by simulating the independent variables, meaning those that don't have an arrow pointing at them.
+These are AP and age.
+We could imagine different air pollutants here, but we'll go with a common one: fine particulate matter, PM~2.5~.
+`mean_PM` is the concentration that the simulated values will fall around.
 We also add noise around that value with `rnorm` and exponentiate the whole thing so that all simulated AP values are positive. 
 
 ```{r}
@@ -74,11 +82,12 @@ summary(age)
 
 ### Chronic kidney disease
 
-CKD is a dependent variable, with age increasing the risk.
+CKD is next and it depends on age.
+Older people have a higher risk to develop CKD.
 
 ![](figures/dag.svg){#fig-dag fig-align="left" width="50%"}
 
-This is why we first set the "beta" for age and CKD, so how much the risk to develop CKD increases with each year.
+This is why we first set the effect for age on CKD, so how much the risk to develop CKD increases with each year.
 
 ```{r}
 #| label: beta_age_CKD
@@ -89,8 +98,8 @@ b_age_CKD <- 0.3
 I set it to `r b_age_CKD` here, which is definitely not evidence-based :') 
 
 CKD status is binary, so we need to assign yes / no to everybody.
-But this assignment should be based on age. 
-Sooo... ?? 
+And this assignment should be based on the age of each individual. 
+Soo... ??
 
 We first assign a *probability* to have CKD to everybody.
 
@@ -101,12 +110,12 @@ prob_CKD <- inv_logit(-2.5 + ((age - mean(age)) * b_age_CKD))
 prob_CKD[1:5]
 ```
 
-Above, we center the age variable by subtracting the mean from everybody's age, then we multiply by the "beta" from above.
-`inv_logit` bounds everything between 0 and 1 (which we need here, because we want *probabilities*) and the -2.5 means "not very likely" in log-space.
-So the "baseline risk" to have CKD is low.
-(Btw, we set -2.5 by just trying different values and looking at the results. No magic here.)
+Above, we center the age variable by subtracting the mean from everybody's age, then we multiply by the effect (`b_age_CKD`) from above.
+`inv_logit` transforms everything to be between 0 and 1 (which we need here, because we want *probabilities*) and the -2.5 means "not likely" in log-odds space.
+So the "baseline risk" to have CKD is quite low.
+(Btw, we set -2.5 by just trying different values and looking at the results which feels weird but it's okay!)
 
-The next step is more straightforward again, we just sample from a Bernoulli distribution.
+The next step is more straightforward again, we just sample from a Bernoulli distribution, using the individual *probabilities* to have CKD.
 
 ```{r}
 #| label: sim_CKD
@@ -115,10 +124,14 @@ CKD <- rbern(n, prob_CKD) + 1
 table(CKD)
 ```
 
+By `+ 1` we make the `[0, 1]` variable a `[1, 2]` variable, with `1` being no CKD and `2` being CKD.
+This is necessary if we don't want to estimate an offset between the two, but the effects in both CKD groups.
+We'll see this in the model code later.
+
 ### Systolic blood pressure
 
 Now we want to add a blood pressure value for each person in the sample.
-We first set the effects of age, AP and CKD status on BP as well as an intercept and noise for BP.
+We first set the effects of age, AP and CKD status on BP as well as an intercept (`a_BP`) and noise (`sigma_BP`) for BP.
 
 ```{r}
 #| label: effects_BP
@@ -133,7 +146,7 @@ sigma_BP <- 5
 
 Now we are ready to simulate BP. 
 We sample from a normal distribution again and use the effects we set above together with the variables we have simulated to "modify" the mean.
-Then we just add a bit of noise (`sigma_BP`) and round the results.
+Then we just add a bit of noise and round the results with `sigma_BP`.
 
 ```{r}
 #| label: sim_BP
@@ -155,7 +168,7 @@ The last thing we'll add is an ID variable.
 ```{r}
 #| label: id
 
-id <- c(1:n)
+id <- 1:n
 ```
 
 Now we add everything to a dataframe and save it.
@@ -186,6 +199,7 @@ Let's plot the data.
 
 library(tidyplots)
 
+data <- read.csv("data/data.csv")
 data$CKD <- as.factor(data$CKD)
 
 data |>
@@ -216,7 +230,7 @@ data |>
 ```
 
 
-Looks okay to me. Great! Now we can move on to modeling :)
+Great! Now we can move on to modeling :)
 
 # Parameter estimation
 
@@ -229,14 +243,26 @@ $$
 \alpha &\sim \mathcal{N}(120, 10) \\
 \beta_{\text{AP}[j]} &\sim \mathcal{N}(1.5, 2) \\
 \beta_{\text{age}} &\sim \mathcal{N}(0, 2) \\
-\sigma &\sim \operatorname{Exponential}(1)
+\sigma &\sim \operatorname{Exponential}(0.1)
 \end{aligned}
 $$
+
+**Likelihood**
+
+- $\text{BP}_i \sim \mathcal{N}(\mu_i, \sigma)$: We assume each person's observed blood pressure comes from a normal distribution. Its centre is $\mu_i$, the *expected* BP for person $i$. $\sigma$ is the spread, so how far individual values spread around that expectation.
+
+**Parameters and priors**
+
+- $\alpha$ (**intercept**): The expected BP when AP and age are zero. The prior $\mathcal{N}(120, 10)$ says that we believe this value is most likely around 120 mmHg.
+- $\beta_{\text{AP}[j]}$ (**air pollution slope by CKD group**): The change in BP for each unit increase in AP.
+The index $j$ means there are *two* slopes, one per CKD group. The prior $\mathcal{N}(1.5, 2)$ expresses the belief that higher pollution increases BP, but it is wide enough to allow no effect or even a negative effect. Both groups get the same prior, but each slope is estimated separately.
+- $\beta_{\text{age}}$ (**age slope**): The change in expected BP for each additional year of age.
+- $\sigma$ (**residual standard deviation**): How much the individual BP values vary around $\mu_i$. It must be positive, so we give it an $\operatorname{Exponential}(0.1)$ prior.
 
 ## Prior prediction
 
 Let's check if our priors make sense.
-We draw 20 values from the priors for $\alpha$ and $\beta_{\text{AP}}$ (here we just check the prior for no CKD, but we could of course look at both).
+We draw 20 values from the priors for $\alpha$ and $\beta_{\text{AP}}$.
 Then we plot all of these lines.
 This plot tells us which relationships between AP and BP the prior "thinks" are possible.
 
@@ -302,7 +328,7 @@ Once you have these things, it's really easy to fill out the model.
 
 ```{r}
 #| label: model
-#| include: false
+#| output: false
 
 data <- as.list(read.csv("data/data.csv"))
 
@@ -402,11 +428,12 @@ par(old_par)
 ```
 
 Above, you can see the "history" of the four chains exploring our five parameters. 
-The x -xis shows the number of iterations.
-The shaded first half of the sampling process was used as warmup and is discarded in the results.
-You can really see how the chains needed a few iterations just to get to the right area of the posterior.
-There are smart ways to tell the sampler where it should start sampling, but as you can see, the chains settled quite fast, so this is okay.
-But in order to judge whether the chains have converged or not, we should "zoom" into the second half of sampling:
+The x -xis shows the iterations.
+The shaded first half of the sampling process is the warmup phase and is not included in the results.
+You can see how the chains needed a few iterations just to get to the right region of the posterior.
+There are smart ways to tell the sampler where it should start sampling, but as you can see, the chains settled on their regions way before warmup was over, so this is okay here.
+
+But in order to judge whether the chains have converged or not, we should "zoom" into the second half of sampling.
 
 ```{r}
 #| label: traceplot_2
@@ -432,7 +459,6 @@ You can see a few examples of bad looking traceplots [here](https://arviz-devs.g
 ## Visualize the results
 Now let's visualize our results!
 
-Okay, now lets look at the data and the line at the posterior mean plotted (black) and 20 samples from the posterior (grey):
 ```{r}
 #| label: prep_vis_post_AP_BP
 
@@ -494,6 +520,20 @@ plot_df |>
   adjust_y_axis_title("Blood pressure (mmHg)") |>
   adjust_size(width = 90, height = 80) |>
   adjust_font(fontsize = 10)
+```
+
+```{r}
+out <- vector(length = length(AP))
+matrix(data = Inf, nrow = 3, ncol = length(AP))
+
+for (i in 1:2) {
+  out[i, ] <- a[i] + b[i] * AP
+}
+
+out2 <- vector(length = length(AP))
+for (i in 1:ncol(out)) {
+  out2[i] <- median(out[, i])
+}
 ```
 
 # Postprocessing
