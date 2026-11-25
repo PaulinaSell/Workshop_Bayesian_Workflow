@@ -10,7 +10,8 @@ m_AP_BP <- ulam(
     sigma ~ dexp(1)
   ),
   data = data,
-  chains = 4
+  chains = 4,
+  iter = 1000
 )
 
 precis(m_AP_BP, depth = 2)

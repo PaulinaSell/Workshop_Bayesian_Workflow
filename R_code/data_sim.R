@@ -2,12 +2,12 @@
 
 library(rethinking)
 
-set.seed(153)
+set.seed(146)
 
 n <- 1000
 
 # simulate air pollution exposure, e.g. PM2.5
-AP <- exp(log(10) + rnorm(n, 0, 0.3)) # exp so that all values are positive
+AP <- rgamma(n, 8, 2)
 
 age <- round(runif(n, 55, 95))
 
@@ -15,7 +15,7 @@ age <- round(runif(n, 55, 95))
 a_BP <- c(110, 120) # intercept BP
 b_age_CKD <- 0.3 # effect of age on comorbidity
 b_age_BP <- 0.27 # effect of age on BP
-b_AP_BP <- c(1.3, 2) # effect of AP on BP by comorbidity
+b_AP_BP <- c(1.3, 2.2) # effect of AP on BP by comorbidity
 sigma_BP <- 5 # noise in BP
 
 prob_CKD <- inv_logit(-2.5 + ((age - mean(age)) * b_age_CKD)) # probability to have a comorbidity, the baseline risk is very low
