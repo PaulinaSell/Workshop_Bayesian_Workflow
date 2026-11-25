@@ -2,7 +2,7 @@
 
 library(rethinking)
 
-set.seed(156)
+set.seed(153)
 
 n <- 1000
 
@@ -12,13 +12,13 @@ AP <- exp(log(10) + rnorm(n, 0, 0.3)) # exp so that all values are positive
 age <- round(runif(n, 55, 95))
 
 # relationships between variables
-a_BP <- 110 # intercept BP
-b_age_CKD <- 0.4 # effect of age on comorbidity
+a_BP <- c(110, 120) # intercept BP
+b_age_CKD <- 0.3 # effect of age on comorbidity
 b_age_BP <- 0.27 # effect of age on BP
 b_AP_BP <- c(1.3, 2) # effect of AP on BP by comorbidity
 sigma_BP <- 5 # noise in BP
 
-prob_CKD <- inv_logit(-2 + ((age - mean(age)) * b_age_CKD)) # probability to have a comorbidity, the baseline risk is very low (-3)
+prob_CKD <- inv_logit(-2.5 + ((age - mean(age)) * b_age_CKD)) # probability to have a comorbidity, the baseline risk is very low
 
 CKD <- rbern(n, prob_CKD) + 1
 table(CKD)
@@ -26,7 +26,7 @@ table(CKD)
 BP <- round(
   rnorm(
     n,
-    mean = a_BP +
+    mean = a_BP[CKD] +
       b_age_BP * age +
       b_AP_BP[CKD] * AP,
     sd = sigma_BP
