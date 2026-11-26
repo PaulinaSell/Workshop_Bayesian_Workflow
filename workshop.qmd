@@ -338,11 +338,10 @@ data <- as.list(read.csv("data/data.csv"))
 m_AP_BP <- ulam(
   alist(
     BP ~ dnorm(mu, sigma),
-    mu <- a[CKD] + b_AP_BP[CKD] * AP,
-    # + b_age_BP * age,
+    mu <- a[CKD] + b_AP_BP[CKD] * AP + b_age_BP * age,
     a[CKD] ~ dnorm(120, 10),
     b_AP_BP[CKD] ~ dnorm(0, 2),
-    # b_age_BP ~ dnorm(0, 2),
+    b_age_BP ~ dnorm(0, 2),
     sigma ~ dexp(1)
   ),
   data = data,
@@ -475,55 +474,36 @@ APseq <- seq(from = 1, to = 30, by = 0.5)
 
 n_samples <- nrow(post_samples$a)
 n_x <- length(APseq)
+n_ckd <- 2
 
-out_noCKD <- matrix(data = NA, nrow = n_samples, ncol = n_x)
-
-for (i in 1:n_samples) {
-  out_noCKD[i, ] <- post_samples$a[i, 1] + # 1 for no CKD
-    post_samples$b_AP_BP[i, 1] * APseq + # 1 for no CKD
-    post_samples$b_age_BP[i] * age_value
-}
-
-out_CKD <- matrix(data = NA, nrow = n_samples, ncol = n_x)
+pred_bp <- array(dim = c(n_samples, n_ckd, n_x))
 
 for (i in 1:n_samples) {
-  out_CKD[i, ] <- post_samples$a[i, 2] + # 2 for CKD
-    post_samples$b_AP_BP[i, 2] * APseq + # 2 for CKD
-    post_samples$b_age_BP[i] * age_value
+  for (j in 1:n_ckd) {
+    pred_bp[i, j, ] <- post_samples$a[i, j] +
+      post_samples$b_AP_BP[i, j] * APseq +
+      post_samples$b_age_BP[i] * age_value
+  }
 }
 
-summarise_draws <- function(pred_matrix, x_values, prob = 0.95) {
-  n_x <- ncol(pred_matrix)
+summarise_draws <- function(pred, x_values, quantiles = c(0.1, 0.5, 0.9)) {
+  pred_dims <- dim(pred)
+  n_ckd <- pred_dims[2]
+  out <- array(dim = c(length(quantiles), tail(pred_dims, 2)))
 
-  out_low <- vector(length = n_x)
-  out_q25 <- vector(length = n_x)
-  out_median <- vector(length = n_x)
-  out_q75 <- vector(length = n_x)
-  out_high <- vector(length = n_x)
-
-  for (j in 1:n_x) {
-    draws_j <- pred_matrix[, j] # all posterior draws for AP value j
-    interval_j <- HPDI(draws_j, prob = prob)
-
-    out_median[j] <- median(draws_j)
-    out_low[j] <- interval_j[1]
-    out_q25[j] <- quantile(draws_j, prob = 0.25)
-    out_q75[j] <- quantile(draws_j, prob = 0.75)
-    out_high[j] <- interval_j[2]
+  for (i in seq_along(quantiles)) {
+    for (j in 1:n_x) {
+      for (k in 1:n_ckd) {
+        draws_j <- pred[, k, j] # all posterior draws for AP value j
+        out[i, k, j] <- quantile(draws_j, prob = quantiles[i])
+      }
+    }
   }
 
-  data.frame(
-    AP = x_values,
-    low = out_low,
-    q25 = out_q25,
-    median = out_median,
-    q75 = out_q75,
-    high = out_high
-  )
+  out
 }
 
-summary_noCKD <- summarise_draws(out_noCKD, APseq)
-summary_CKD <- summarise_draws(out_CKD, APseq)
+bp_summary <- summarise_draws(pred_bp, APseq)
 ```
 
 ```{r}
@@ -533,34 +513,21 @@ summary_CKD <- summarise_draws(out_CKD, APseq)
 plot(
   NULL,
   xlim = range(APseq),
-  ylim = range(c(summary_noCKD$low, summary_CKD$high)),
+  ylim = range(c(bp_summary[1, 1, ], bp_summary[3, 2, ])),
   xlab = "Air pollution",
   ylab = "Predicted BP (mmHg)"
 )
 
-shade(
-  rbind(summary_noCKD$low, summary_noCKD$high),
-  APseq,
-  col = col.alpha("cornflowerblue", 0.2)
-)
-shade(
-  rbind(summary_noCKD$q25, summary_noCKD$q75),
-  APseq,
-  col = col.alpha("cornflowerblue", 0.2)
-)
-lines(APseq, summary_noCKD$median, col = "cornflowerblue", lwd = 2)
+color <- c("cornflowerblue", "#870052")
 
-shade(
-  rbind(summary_CKD$low, summary_CKD$high),
-  APseq,
-  col = col.alpha("#870052", 0.2)
-)
-shade(
-  rbind(summary_CKD$q25, summary_CKD$q75),
-  APseq,
-  col = col.alpha("#870052", 0.2)
-)
-lines(APseq, summary_CKD$median, col = "#870052", lwd = 2)
+for (i in 1:n_ckd) {
+  shade(
+    rbind(bp_summary[1, i, ], bp_summary[3, i, ]),
+    APseq,
+    col = col.alpha(color[i], 0.2)
+  )
+  lines(APseq, bp_summary[2, i, ], col = color[i], lwd = 2)
+}
 
 legend(
   "topleft",
