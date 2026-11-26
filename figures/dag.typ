@@ -8,7 +8,7 @@
   spacing: (2.2em, 2em),
   node-inset: 10pt,
   $
-                                   & "CKD" edge("d", ->) & "age" edge("l", ->) edge("d", ->) \
-    "Air pollution" edge("rr", ->) &                     &                              "BP"
+                                   & "CKD" edge("d", ->) edge("dr", ->) & "age" edge("l", ->) edge("d", ->) \
+    "Air pollution" edge("rr", ->) &                                    &                              "BP"
   $,
 )
