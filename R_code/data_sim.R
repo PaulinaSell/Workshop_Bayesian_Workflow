@@ -2,8 +2,6 @@
 
 library(rethinking)
 
-set.seed(146)
-
 n <- 1000
 
 # simulate air pollution exposure, e.g. PM2.5

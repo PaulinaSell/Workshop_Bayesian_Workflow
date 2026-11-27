@@ -47,7 +47,6 @@ Let's first set up the workspace.
 #| error: false
 
 library(rethinking)
-set.seed(146)
 ```
 
 ### Air pollution
