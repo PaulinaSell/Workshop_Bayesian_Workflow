@@ -7,7 +7,7 @@ fit <- ulam(
     # The linear model
     mu <- __ * __ + __ * __,
     # Priors
-    b_XY ~ dnorm(__, __),
+    __ ~ dnorm(__, __),
     # ...
   ),
   data = data,
